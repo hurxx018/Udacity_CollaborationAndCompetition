@@ -42,6 +42,7 @@ class Agent():
         self,
         n_state,
         n_action,
+        n_agents,
         random_seed,
         device = "cpu"
         ):
@@ -60,42 +61,46 @@ class Agent():
         """
         self.n_state = n_state
         self.n_action = n_action
+        self.n_agents = n_agents
         self.random_seed = np.random.seed(random_seed)
         self.device = device
 
         # Networks for the first agent
         # Local Actor, Local Critic, Target Actor, Target Critic
-        self.actor_local1 = Actor(self.n_state, self.n_action, self.random_seed).to(self.device)
+        self.actor_local1 = Actor(self.n_state * self.n_agents, self.n_action, self.random_seed).to(self.device)
         self.actor_local1.apply(initialize_weights)
-        self.critic_local1 = Critic(self.n_state, self.n_action, self.random_seed).to(self.device)
+        self.critic_local1 = Critic(self.n_state * self.n_agents, self.n_action * self.n_agents, self.random_seed).to(self.device)
         self.critic_local1.apply(initialize_weights)
-        self.actor_target1 = Actor(self.n_state, self.n_action, self.random_seed).to(self.device)
+        self.actor_target1 = Actor(self.n_state * self.n_agents, self.n_action, self.random_seed).to(self.device)
         self.actor_target1.apply(initialize_weights)
         self.actor_target1.eval()
-        self.critic_target1 = Critic(self.n_state, self.n_action, self.random_seed).to(self.device)
+        self.critic_target1 = Critic(self.n_state * self.n_agents, self.n_action * self.n_agents, self.random_seed).to(self.device)
         self.critic_target1.apply(initialize_weights)
         self.critic_target1.eval()
 
 
         # Networks for the second agent
         # Local Actor, Local Critic, Target Actor, Target Critic
-        self.actor_local2 = Actor(self.n_state, self.n_action, self.random_seed).to(self.device)
+        self.actor_local2 = Actor(self.n_state * self.n_agents, self.n_action, self.random_seed).to(self.device)
         self.actor_local2.apply(initialize_weights)
-        self.critic_local2 = Critic(self.n_state, self.n_action, self.random_seed).to(self.device)
+        self.critic_local2 = Critic(self.n_state * self.n_agents, self.n_action * self.n_agents, self.random_seed).to(self.device)
         self.critic_local2.apply(initialize_weights)
-        self.actor_target2 = Actor(self.n_state, self.n_action, self.random_seed).to(self.device)
+        self.actor_target2 = Actor(self.n_state * self.n_agents, self.n_action, self.random_seed).to(self.device)
         self.actor_target2.apply(initialize_weights)
         self.actor_target2.eval()
-        self.critic_target2 = Critic(self.n_state, self.n_action, self.random_seed).to(self.device)
+        self.critic_target2 = Critic(self.n_state * self.n_agents, self.n_action * self.n_agents, self.random_seed).to(self.device)
         self.actor_target2.apply(initialize_weights)
         self.critic_target2.eval()
 
         # optimizers
-        actor_params = [self.actor_local1.parameters(), self.actor_local2.parameters()]
-        self.actor_optimizer = optim.Adam(itertools.chain(*actor_params), lr = LR_ACTOR)
-        critic_params = [self.critic_local1.parameters(), self.critic_local2.parameters()]
-        self.critic_optimizer = optim.Adam(itertools.chain(*critic_params), lr = LR_CRITIC, weight_decay = WEIGHT_DECAY)
-
+        # actor_params = [self.actor_local1.parameters(), self.actor_local2.parameters()]
+        # self.actor_optimizer = optim.Adam(itertools.chain(*actor_params), lr = LR_ACTOR)
+        # critic_params = [self.critic_local1.parameters(), self.critic_local2.parameters()]
+        # self.critic_optimizer = optim.Adam(itertools.chain(*critic_params), lr = LR_CRITIC, weight_decay = WEIGHT_DECAY)
+        self.actor_optimizer1 = optim.Adam(self.actor_local1.parameters(), lr = LR_ACTOR)
+        self.actor_optimizer2 = optim.Adam(self.actor_local2.parameters(), lr = LR_ACTOR)
+        self.critic_optimizer1 = optim.Adam(self.critic_local1.parameters(), lr = LR_CRITIC, weight_decay = WEIGHT_DECAY)
+        self.critic_optimizer2 = optim.Adam(self.critic_local2.parameters(), lr = LR_CRITIC, weight_decay = WEIGHT_DECAY)
 
         # Noise process
         self.noise = OUNoise(n_action*2, random_seed + 1, mu=0., theta=THETA, sigma=SIGMA)
@@ -127,14 +132,14 @@ class Agent():
 
 
     def act(self, state, add_noise = True):
-
-        state0 = torch.from_numpy(state[0]).unsqueeze(dim=0).float().to(self.device)
-        state1 = torch.from_numpy(state[1]).unsqueeze(dim=0).float().to(self.device)
+        state = state.flatten()
+        state = torch.from_numpy(state).unsqueeze(dim=0).float().to(self.device)
+        # state1 = torch.from_numpy(state).unsqueeze(dim=0).float().to(self.device)
         self.actor_local1.eval()
         self.actor_local2.eval()
         with torch.no_grad():
-            action0 = self.actor_local1(state0).cpu().data.numpy()
-            action1 = self.actor_local2(state1).cpu().data.numpy()
+            action0 = self.actor_local1(state).cpu().data.numpy()
+            action1 = self.actor_local2(state).cpu().data.numpy()
 
         action = np.vstack([action0, action1])
         self.actor_local1.train()
@@ -152,8 +157,7 @@ class Agent():
         experiences, 
         gamma
         ):
-        states1, actions1, rewards1, next_states1, dones1 = experiences[0]
-        states2, actions2, rewards2, next_states2, dones2 = experiences[1]
+        states, actions1, actions2, rewards1, rewards2, next_states, dones = experiences
 
         # ---------------------------- update critic ---------------------------- #
         # Get predicted next-state actions and Q values from target models
@@ -261,41 +265,35 @@ class ReplayBuffer:
         """Randomly sample a batch of experiences from memory."""
         experiences = random.sample(self.memory, k=self.batch_size)
 
-        states1, actions1, rewards1, next_states1, dones1 = [], [], [], [], []
-        states2, actions2, rewards2, next_states2, dones2 = [], [], [], [], []
+        states, next_states, dones = [], [], []
+        actions1, rewards1, = [], []
+        actions2, rewards2 = [], []
         for e in experiences:
             if e is not None:
-                states1.append(e.state[0])
+                states.append(e.state.flatten())
                 actions1.append(e.action[0])
                 rewards1.append(e.reward[0])
-                next_states1.append(e.next_state[0])
-                dones1.append(e.done)
-                states2.append(e.state[1])
+                next_states.append(e.next_state.flatten())
+                dones.append(e.done)
                 actions2.append(e.action[1])
                 rewards2.append(e.reward[1])
-                next_states2.append(e.next_state[1])
-                dones2.append(e.done)
 
-
-        states1 = torch.from_numpy(np.vstack(states1)).float().to(self.device)
+        states = torch.from_numpy(np.vstack(states)).float().to(self.device)
         actions1 = torch.from_numpy(np.vstack(actions1)).float().to(self.device)
         r_tmp1 = np.vstack(rewards1)
         m0 = r_tmp1.mean()
         s0 = r_tmp1.std() + 1e-10
         rewards1 = torch.from_numpy((r_tmp1 - m0)/s0).float().to(self.device)
-        next_states1 = torch.from_numpy(np.vstack(next_states1)).float().to(self.device)
-        dones1 = torch.from_numpy(np.vstack(dones1).astype(np.uint8)).float().to(self.device)
+        next_states = torch.from_numpy(np.vstack(next_states)).float().to(self.device)
+        dones = torch.from_numpy(np.vstack(dones).astype(np.uint8)).float().to(self.device)
 
-        states2 = torch.from_numpy(np.vstack(states2)).float().to(self.device)
         actions2 = torch.from_numpy(np.vstack(actions2)).float().to(self.device)
         r_tmp2 = np.vstack(rewards2)
         m0 = r_tmp2.mean()
         s0 = r_tmp2.std() + 1e-10
         rewards2 = torch.from_numpy((r_tmp2 - m0)/s0).float().to(self.device)
-        next_states2 = torch.from_numpy(np.vstack(next_states2)).float().to(self.device)
-        dones2 = torch.from_numpy(np.vstack(dones2).astype(np.uint8)).float().to(self.device)
 
-        return (states1, actions1, rewards1, next_states1, dones1), (states2, actions2, rewards2, next_states2, dones2)
+        return states, actions1, actions2, rewards1, rewards2, next_states, dones
 
     def __len__(self):
         """Return the current size of internal memory."""
