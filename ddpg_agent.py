@@ -15,25 +15,25 @@ import torch.optim as optim
 from ddpg_model import Actor, Critic, initialize_weights
 
 
-BUFFER_SIZE = int(2e5)  # replay buffer size
+BUFFER_SIZE = int(5e5)  # replay buffer size
 BATCH_SIZE = 32         # minibatch size
 GAMMA = 0.99            # discount factor
-TAU = 1e-2              # for soft update of target parameters
-LR_ACTOR = 1e-2         # learning rate of the actor 
-LR_CRITIC = 1e-2        # learning rate of the critic
+TAU = 2e-2              # for soft update of target parameters
+LR_ACTOR = 2e-4         # learning rate of the actor 
+LR_CRITIC = 2e-4        # learning rate of the critic
 WEIGHT_DECAY = 0.00001  # L2 weight decay
 
-UPDATE_EVERY = 8       # how often to update the network
-N_LEARNING = 2
+UPDATE_EVERY = 2 #4*1       # how often to update the network
+N_LEARNING =  6 #4*4
 
 # OS Noise parameters
-THETA = 0.1*1
-SIGMA = 0.05*1
+THETA = 0.01*1
+SIGMA = 0.005*1
 
 THETA_MIN = 0.0000001
 SIGMA_MIN = 0.0000001
-DECAY_FACTOR_S = 0.9999
-DECAY_FACTOR_T = 0.9999
+DECAY_FACTOR_S = 0.999
+DECAY_FACTOR_T = 0.999
 
 
 class Agent():
@@ -67,11 +67,11 @@ class Agent():
 
         # Networks for the first agent
         # Local Actor, Local Critic, Target Actor, Target Critic
-        self.actor_local1 = Actor(self.n_state * self.n_agents, self.n_action, self.random_seed).to(self.device)
+        self.actor_local1 = Actor(self.n_state, self.n_action, self.random_seed).to(self.device)
         self.actor_local1.apply(initialize_weights)
         self.critic_local1 = Critic(self.n_state * self.n_agents, self.n_action * self.n_agents, self.random_seed).to(self.device)
         self.critic_local1.apply(initialize_weights)
-        self.actor_target1 = Actor(self.n_state * self.n_agents, self.n_action, self.random_seed).to(self.device)
+        self.actor_target1 = Actor(self.n_state, self.n_action, self.random_seed).to(self.device)
         self.actor_target1.apply(initialize_weights)
         self.actor_target1.eval()
         self.critic_target1 = Critic(self.n_state * self.n_agents, self.n_action * self.n_agents, self.random_seed).to(self.device)
@@ -81,11 +81,11 @@ class Agent():
 
         # Networks for the second agent
         # Local Actor, Local Critic, Target Actor, Target Critic
-        self.actor_local2 = Actor(self.n_state * self.n_agents, self.n_action, self.random_seed).to(self.device)
+        self.actor_local2 = Actor(self.n_state, self.n_action, self.random_seed).to(self.device)
         self.actor_local2.apply(initialize_weights)
         self.critic_local2 = Critic(self.n_state * self.n_agents, self.n_action * self.n_agents, self.random_seed).to(self.device)
         self.critic_local2.apply(initialize_weights)
-        self.actor_target2 = Actor(self.n_state * self.n_agents, self.n_action, self.random_seed).to(self.device)
+        self.actor_target2 = Actor(self.n_state, self.n_action, self.random_seed).to(self.device)
         self.actor_target2.apply(initialize_weights)
         self.actor_target2.eval()
         self.critic_target2 = Critic(self.n_state * self.n_agents, self.n_action * self.n_agents, self.random_seed).to(self.device)
@@ -132,14 +132,14 @@ class Agent():
 
 
     def act(self, state, add_noise = True):
-        state = state.flatten()
-        state = torch.from_numpy(state).unsqueeze(dim=0).float().to(self.device)
+        state0 = torch.from_numpy(state[0]).unsqueeze(dim=0).float().to(self.device)
+        state1 = torch.from_numpy(state[1]).unsqueeze(dim=0).float().to(self.device)
         # state1 = torch.from_numpy(state).unsqueeze(dim=0).float().to(self.device)
         self.actor_local1.eval()
         self.actor_local2.eval()
         with torch.no_grad():
-            action0 = self.actor_local1(state).cpu().data.numpy()
-            action1 = self.actor_local2(state).cpu().data.numpy()
+            action0 = self.actor_local1(state0).cpu().data.numpy()
+            action1 = self.actor_local2(state1).cpu().data.numpy()
 
         action = np.vstack([action0, action1])
         self.actor_local1.train()
@@ -157,42 +157,58 @@ class Agent():
         experiences, 
         gamma
         ):
-        states, actions1, actions2, rewards1, rewards2, next_states, dones = experiences
+        states, actions, rewards, next_states, dones = experiences
 
         # ---------------------------- update critic ---------------------------- #
         # Get predicted next-state actions and Q values from target models
-        actions_next1 = self.actor_target1(next_states1)
-        Q_targets_next1 = self.critic_target1(next_states1, actions_next1)
-        # Compute Q targets for current states (y_i)
-        Q_targets1 = rewards1 + (gamma * Q_targets_next1 * (1 - dones1))
-        # Compute critic loss
-        Q_expected1 = self.critic_local1(states1, actions1)
+        with torch.no_grad():
+            actions_next1 = self.actor_target1(next_states[:, 0:24])
+            actions_next2 = self.actor_target2(next_states[:, 24:])
 
-        actions_next2 = self.actor_target2(next_states2)
-        Q_targets_next2 = self.critic_target2(next_states2, actions_next2)
-        # Compute Q targets for current states (y_i)
-        Q_targets2 = rewards2 + (gamma * Q_targets_next2 * (1 - dones2))
-        # Compute critic loss
-        Q_expected2 = self.critic_local2(states2, actions2)
+            actions_next = torch.cat((actions_next1, actions_next2), dim = 1)
+            Q_targets_next1 = self.critic_target1(next_states, actions_next)
+            Q_targets_next2 = self.critic_target2(next_states, actions_next)
 
-        critic_loss = F.mse_loss(Q_expected1, Q_targets1) + F.mse_loss(Q_expected2, Q_targets2)
+        # Compute Q targets for current states (y_i)
+        # print( rewards[:, 0].shape,  rewards[:, 0].shape, Q_targets_next1.shape)
+        # print(Q_targets_next1.shape, dones.shape)
+        # print(Q_targets_next2.shape, dones.shape)
+        Q_targets1 = rewards[:, 0].unsqueeze(dim = 1) + (gamma * Q_targets_next1 * (1 - dones[:, 0].unsqueeze(dim = 1)))
+        Q_targets2 = rewards[:, 1].unsqueeze(dim = 1) + (gamma * Q_targets_next2 * (1 - dones[:, 1].unsqueeze(dim = 1)))
+        # print(Q_targets1.shape)
+        # Compute critic loss
+        Q_expected1 = self.critic_local1(states, actions)
+        Q_expected2 = self.critic_local2(states, actions)
+        # print(Q_expected1.shape)
+        critic_loss1 = F.mse_loss(Q_expected1, Q_targets1.detach())
+        critic_loss2 = F.mse_loss(Q_expected2, Q_targets2.detach())
         # Minimize the loss
-        self.critic_optimizer.zero_grad()
-        critic_loss.backward()
+        self.critic_optimizer1.zero_grad()
+        critic_loss1.backward()
         torch.nn.utils.clip_grad_norm_(self.critic_local1.parameters(), 1)
+        self.critic_optimizer1.step()
+
+        self.critic_optimizer2.zero_grad()
+        critic_loss2.backward()
         torch.nn.utils.clip_grad_norm_(self.critic_local2.parameters(), 1)
-        self.critic_optimizer.step()
+        self.critic_optimizer2.step()
 
         # ---------------------------- update actor ---------------------------- #
         # Compute actor loss
-        actions_pred1 = self.actor_local1(states1)
-        actions_pred2 = self.actor_local2(states2)
-        actor_loss = -self.critic_local1(states1, actions_pred1).mean() - self.critic_local2(states2, actions_pred2).mean()
+        actions_pred1 = self.actor_local1(states[:, 0:24])
+        actions_pred2 = self.actor_local2(states[:, 24:])
+        actions_pred = torch.cat((actions_pred1, actions_pred2), dim = 1)
 
+        actor_loss1 = -self.critic_local1(states, actions_pred).mean() 
         # Minimize the loss
-        self.actor_optimizer.zero_grad()
-        actor_loss.backward()
-        self.actor_optimizer.step()
+        self.actor_optimizer1.zero_grad()
+        actor_loss1.backward(retain_graph=True)
+        self.actor_optimizer1.step()
+
+        actor_loss2 = -self.critic_local2(states, actions_pred).mean()
+        self.actor_optimizer2.zero_grad()
+        actor_loss2.backward(retain_graph=True)
+        self.actor_optimizer2.step()
 
         # ----------------------- update target networks ----------------------- #
         self.soft_update(self.critic_local1, self.critic_target1, TAU)
@@ -265,35 +281,26 @@ class ReplayBuffer:
         """Randomly sample a batch of experiences from memory."""
         experiences = random.sample(self.memory, k=self.batch_size)
 
-        states, next_states, dones = [], [], []
-        actions1, rewards1, = [], []
-        actions2, rewards2 = [], []
+        states, actions, rewards, next_states, dones = [], [], [], [], []
         for e in experiences:
             if e is not None:
                 states.append(e.state.flatten())
-                actions1.append(e.action[0])
-                rewards1.append(e.reward[0])
+                actions.append(e.action.flatten())
+                rewards.append(np.asarray(e.reward))
                 next_states.append(e.next_state.flatten())
                 dones.append(e.done)
-                actions2.append(e.action[1])
-                rewards2.append(e.reward[1])
 
         states = torch.from_numpy(np.vstack(states)).float().to(self.device)
-        actions1 = torch.from_numpy(np.vstack(actions1)).float().to(self.device)
-        r_tmp1 = np.vstack(rewards1)
-        m0 = r_tmp1.mean()
-        s0 = r_tmp1.std() + 1e-10
-        rewards1 = torch.from_numpy((r_tmp1 - m0)/s0).float().to(self.device)
+        actions = torch.from_numpy(np.vstack(actions)).float().to(self.device)
+        rewards_tmp = np.vstack(rewards)
+        m0 = rewards_tmp.mean(axis=0)
+        s0 = rewards_tmp.std(axis=0) + 1e-10
+        rewards_tmp = (rewards_tmp - m0)/s0
+        rewards = torch.from_numpy(rewards_tmp).float().to(self.device)
         next_states = torch.from_numpy(np.vstack(next_states)).float().to(self.device)
         dones = torch.from_numpy(np.vstack(dones).astype(np.uint8)).float().to(self.device)
 
-        actions2 = torch.from_numpy(np.vstack(actions2)).float().to(self.device)
-        r_tmp2 = np.vstack(rewards2)
-        m0 = r_tmp2.mean()
-        s0 = r_tmp2.std() + 1e-10
-        rewards2 = torch.from_numpy((r_tmp2 - m0)/s0).float().to(self.device)
-
-        return states, actions1, actions2, rewards1, rewards2, next_states, dones
+        return states, actions, rewards, next_states, dones
 
     def __len__(self):
         """Return the current size of internal memory."""
