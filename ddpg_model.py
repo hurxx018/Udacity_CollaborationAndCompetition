@@ -10,7 +10,7 @@ class Actor(nn.Module):
         n_state,
         n_action,
         seed = None,
-        fc_units = 256//4
+        fc_units = 256*2
         ):
         super(Actor, self).__init__()
         if seed and isinstance(seed, int):
@@ -39,9 +39,9 @@ class Critic(nn.Module):
         n_state,
         n_action,
         seed = None,
-        fcs1_units = 256//2//2, 
-        fc2_units = 256//2//2, 
-        fc3_units = 128//1//2 
+        fcs1_units = 256*1, 
+        fc2_units = 256*1, 
+        fc3_units = 128*1 
         ):
         super(Critic, self).__init__()
         if seed and isinstance(seed, int):
@@ -73,5 +73,5 @@ def initialize_weights(
     if isinstance(layer, nn.Linear):
         n = layer.in_features
         y = np.sqrt(1./n)
-        layer.weight.data.uniform_(-y, y)
+        layer.weight.data.normal_(0, y)
         layer.bias.data.fill_(0)
