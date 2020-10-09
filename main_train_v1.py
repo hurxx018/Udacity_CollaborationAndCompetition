@@ -1,4 +1,5 @@
 from collections import deque
+import time
 
 from unityagents import UnityEnvironment
 
@@ -20,7 +21,8 @@ def train_ddpg_v1(
 
     scores_deque = deque(maxlen = 100)
     scores = []
-    # max_score = -np.Inf
+    mean_scores = []
+    max_mean_score = 0.5
     for i_episode in range(1, n_episodes+1):
         env_info = env.reset(train_mode = True)[brain_name] # reset the environment
         states = env_info.vector_observations               # get the current state (for each agent)
@@ -30,6 +32,7 @@ def train_ddpg_v1(
         agent.reset()
         while True:
             actions = agent.act(states, add_noise = True)
+            # print(actions)
             env_info = env.step(actions)[brain_name] # send all actions to the environment
 
             next_states = env_info.vector_observations
@@ -46,12 +49,19 @@ def train_ddpg_v1(
         score = np.max(scores_agents)
         scores_deque.append(score)
         scores.append(score)
-        print('\rEpisode {}\tAverage Score: {:.2f}\tScore: {:.2f}'.format(i_episode, np.mean(scores_deque), score), end="")
+        mean_scores.append(np.mean(scores_deque))
+        print('\rEpisode {}\tAverage Score: {:.2f}\tScore: {:.2f}'.format(i_episode, mean_scores[-1], score), end="")
         if i_episode % 100 == 0:
             # torch.save(agent.actor_local.state_dict(), 'checkpoint_actor.pth')
             # torch.save(agent.critic_local.state_dict(), 'checkpoint_critic.pth')
-            print('\rEpisode {}\tAverage Score: {:.2f}\t'.format(i_episode, np.mean(scores_deque)))
-    return scores
+            print('\rEpisode {}\tAverage Score: {:.2f}\t'.format(i_episode, mean_scores[-1]))
+        if max_mean_score < mean_scores[-1]:
+            max_mean_score = mean_scores[-1]
+            torch.save(agent.actor_local1.state_dict(), 'checkpoint_actor1.pth')
+            torch.save(agent.critic_local1.state_dict(), 'checkpoint_critic1.pth')
+            torch.save(agent.actor_local2.state_dict(), 'checkpoint_actor2.pth')
+            torch.save(agent.critic_local2.state_dict(), 'checkpoint_critic2.pth')
+    return scores, mean_scores
 
 
 
@@ -89,13 +99,15 @@ def main():
     # create an agent
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
     random_seed  = 12345
-    agent = Agent(state_size, action_size, random_seed, device=device)
-
-    scores = train_ddpg_v1(env, agent, n_episodes = 2000)
+    agent = Agent(state_size, action_size, num_agents, random_seed, device=device)
+    start = time.time()
+    scores, mean_scores = train_ddpg_v1(env, agent, n_episodes = 6000)
+    print("Duration: {}".format(time.time() - start))
 
     fig = plt.figure()
     ax = fig.add_subplot(111)
     plt.plot(np.arange(1, len(scores)+1), scores)
+    plt.plot(np.arange(1, len(mean_scores)+1), mean_scores)
     plt.ylabel('Score')
     plt.xlabel('Episode #')
     plt.show()
