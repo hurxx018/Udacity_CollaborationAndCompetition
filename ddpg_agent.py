@@ -19,21 +19,21 @@ BUFFER_SIZE = int(5e5)  # replay buffer size
 BATCH_SIZE = 32         # minibatch size
 GAMMA = 0.99            # discount factor
 TAU = 2e-2              # for soft update of target parameters
-LR_ACTOR = 2e-4         # learning rate of the actor 
-LR_CRITIC = 2e-4        # learning rate of the critic
-WEIGHT_DECAY = 0.00001  # L2 weight decay
+LR_ACTOR = 7e-5         # learning rate of the actor 
+LR_CRITIC = 7e-5        # learning rate of the critic
+WEIGHT_DECAY = 0        # L2 weight decay
 
 UPDATE_EVERY = 2 #4*1       # how often to update the network
-N_LEARNING =  6 #4*4
+N_LEARNING =  6 #6 #4*4
 
 # OS Noise parameters
-THETA = 0.01*1
-SIGMA = 0.005*1
+THETA = 0.002
+SIGMA = 0.001
 
-THETA_MIN = 0.0000001
-SIGMA_MIN = 0.0000001
-DECAY_FACTOR_S = 0.999
-DECAY_FACTOR_T = 0.999
+THETA_MIN = 0.00000001
+SIGMA_MIN = 0.00000001
+DECAY_FACTOR_S = 0.994 #0.995 0.9999
+DECAY_FACTOR_T = 0.994 #0.995 0.9999
 
 
 class Agent():
@@ -93,10 +93,6 @@ class Agent():
         self.critic_target2.eval()
 
         # optimizers
-        # actor_params = [self.actor_local1.parameters(), self.actor_local2.parameters()]
-        # self.actor_optimizer = optim.Adam(itertools.chain(*actor_params), lr = LR_ACTOR)
-        # critic_params = [self.critic_local1.parameters(), self.critic_local2.parameters()]
-        # self.critic_optimizer = optim.Adam(itertools.chain(*critic_params), lr = LR_CRITIC, weight_decay = WEIGHT_DECAY)
         self.actor_optimizer1 = optim.Adam(self.actor_local1.parameters(), lr = LR_ACTOR)
         self.actor_optimizer2 = optim.Adam(self.actor_local2.parameters(), lr = LR_ACTOR)
         self.critic_optimizer1 = optim.Adam(self.critic_local1.parameters(), lr = LR_CRITIC, weight_decay = WEIGHT_DECAY)
@@ -134,7 +130,7 @@ class Agent():
     def act(self, state, add_noise = True):
         state0 = torch.from_numpy(state[0]).unsqueeze(dim=0).float().to(self.device)
         state1 = torch.from_numpy(state[1]).unsqueeze(dim=0).float().to(self.device)
-        # state1 = torch.from_numpy(state).unsqueeze(dim=0).float().to(self.device)
+
         self.actor_local1.eval()
         self.actor_local2.eval()
         with torch.no_grad():
@@ -170,16 +166,13 @@ class Agent():
             Q_targets_next2 = self.critic_target2(next_states, actions_next)
 
         # Compute Q targets for current states (y_i)
-        # print( rewards[:, 0].shape,  rewards[:, 0].shape, Q_targets_next1.shape)
-        # print(Q_targets_next1.shape, dones.shape)
-        # print(Q_targets_next2.shape, dones.shape)
         Q_targets1 = rewards[:, 0].unsqueeze(dim = 1) + (gamma * Q_targets_next1 * (1 - dones[:, 0].unsqueeze(dim = 1)))
         Q_targets2 = rewards[:, 1].unsqueeze(dim = 1) + (gamma * Q_targets_next2 * (1 - dones[:, 1].unsqueeze(dim = 1)))
-        # print(Q_targets1.shape)
+
         # Compute critic loss
         Q_expected1 = self.critic_local1(states, actions)
         Q_expected2 = self.critic_local2(states, actions)
-        # print(Q_expected1.shape)
+
         critic_loss1 = F.mse_loss(Q_expected1, Q_targets1.detach())
         critic_loss2 = F.mse_loss(Q_expected2, Q_targets2.detach())
         # Minimize the loss
