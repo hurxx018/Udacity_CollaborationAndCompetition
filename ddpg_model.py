@@ -40,8 +40,8 @@ class Critic(nn.Module):
         n_action,
         seed = None,
         fcs1_units = 256*1, 
-        fc2_units = 256*1, 
-        fc3_units = 128*1 
+        fc2_units = 256*2, 
+        fc3_units = 128*2 
         ):
         super(Critic, self).__init__()
         if seed and isinstance(seed, int):
