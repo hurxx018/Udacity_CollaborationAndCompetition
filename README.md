@@ -13,7 +13,7 @@ The task is episodic, and in order to solve the environment, the agents must get
 
 The environment is considered solved, when the average (over 100 episodes) of those scores is at least +0.5.
 
-The observation space includes 8 variables consisting of the position (x, y) and velocity (vx, vy) of the ball and racket. Each agent receives its own, local observation. Three consecutive observations are an input state for the agents (The total number of entries in a state is 48 (=8*3*2)), where 24 entries are for each agent. An action of each agent is a vector of two continuous variables that correspond to movements toward (or away from) the net, and jumping. Every entry in the action vector should be a value between -1 and 1.
+The observation space includes 8 variables consisting of the position (x, y) and velocity (v_x, v_y) of the ball and racket.  Each agent receives its own, local observation.  Three consecutive observations are an input state for the agents (The total number of entries in a state is 48 (= 8 x 3 x 2)), where 24 entries are for each agent.  An action of each agent is a vector of two continuous variables that correspond to movements toward (or away from) the net, and jumping.  Every entry in the action vector should be a value between -1 and 1.
 
 ## Dependencies
 Set up your python environment by following the instruction
